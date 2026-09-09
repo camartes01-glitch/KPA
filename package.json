@@ -1,0 +1,15 @@
+{
+  "name": "kpa-welfare-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Karnataka Photography Association (KPA) Welfare Management System Monorepo",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "web": "npm run dev --prefix apps/web",
+    "web:build": "npm run build --prefix apps/web",
+    "web:preview": "npm run preview --prefix apps/web",
+    "mobile": "npm run start --prefix apps/mobile"
+  }
+}

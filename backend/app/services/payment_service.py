@@ -130,8 +130,8 @@ class PaymentService:
             )
 
         await db.commit()
-        await db.refresh(payment)
-        return cls._build_receipt_read(payment)
+        return await cls.get_receipt(db, payment.receipt_no)
+
 
     @staticmethod
     def _build_receipt_read(payment: Payment) -> PaymentReceiptRead:

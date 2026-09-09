@@ -1,0 +1,89 @@
+# ─── Python / Backend ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+*.dylib
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.log
+
+# ─── Alembic ────────────────────────────────────────────────────────────────
+# Keep migrations but not generated temp files
+backend/alembic/__pycache__/
+
+# ─── Node / Web ─────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp/
+.pnp.js
+.yarn/
+dist/
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# ─── Expo / React Native ────────────────────────────────────────────────────
+.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+android/
+ios/
+
+# ─── OS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ─── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ─── Secrets / Credentials ──────────────────────────────────────────────────
+*.pem
+*.crt
+*.key
+google-services.json
+GoogleService-Info.plist
+serviceAccountKey.json
+
+# ─── Uploads / Generated ────────────────────────────────────────────────────
+uploads/
+generated/
+exports/

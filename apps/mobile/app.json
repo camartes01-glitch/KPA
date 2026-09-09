@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "KPA Welfare",
+    "slug": "kpa-welfare",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0d3b66"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.kpa.welfare"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0d3b66"
+      },
+      "package": "org.kpa.welfare"
+    },
+    "plugins": []
+  }
+}

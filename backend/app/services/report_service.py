@@ -16,6 +16,14 @@ from app.models.user import User, UserRole
 from app.models.welfare import WelfareContribution, WelfareEvent
 
 
+def sanitize_csv_cell(value):
+    """Prevent CSV/Spreadsheet formula injection (CWE-1236)."""
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return f"'{value}"
+    return value
+
+
+
 class ReportService:
     @staticmethod
     async def export_members_csv(db: AsyncSession, user: User) -> str:
@@ -44,12 +52,12 @@ class ReportService:
 
         for m in members:
             writer.writerow([
-                m.membership_no or "PENDING",
-                m.full_name,
+                sanitize_csv_cell(m.membership_no or "PENDING"),
+                sanitize_csv_cell(m.full_name),
                 m.gender,
-                m.studio_name or "—",
-                m.district.name_en if m.district else "—",
-                m.taluka.name_en if m.taluka else "—",
+                sanitize_csv_cell(m.studio_name or "—"),
+                sanitize_csv_cell(m.district.name_en if m.district else "—"),
+                sanitize_csv_cell(m.taluka.name_en if m.taluka else "—"),
                 m.status.value,
                 m.created_at.strftime("%Y-%m-%d"),
             ])
@@ -89,9 +97,9 @@ class ReportService:
         for c in contributions:
             writer.writerow([
                 str(c.id),
-                c.member.full_name if c.member else "—",
-                c.member.membership_no if c.member else "—",
-                c.member.district.name_en if c.member and c.member.district else "—",
+                sanitize_csv_cell(c.member.full_name if c.member else "—"),
+                sanitize_csv_cell(c.member.membership_no if c.member else "—"),
+                sanitize_csv_cell(c.member.district.name_en if c.member and c.member.district else "—"),
                 float(c.amount),
                 c.status.value,
                 c.payment_method or "—",
@@ -130,14 +138,14 @@ class ReportService:
                 event_title = p.contribution.event.title
 
             writer.writerow([
-                p.receipt_no,
-                p.member.full_name if p.member else "—",
-                p.member.membership_no if p.member else "—",
-                event_title,
+                sanitize_csv_cell(p.receipt_no),
+                sanitize_csv_cell(p.member.full_name if p.member else "—"),
+                sanitize_csv_cell(p.member.membership_no if p.member else "—"),
+                sanitize_csv_cell(event_title),
                 float(p.amount),
                 p.gateway,
-                p.gateway_order_id,
-                p.gateway_payment_id or "—",
+                sanitize_csv_cell(p.gateway_order_id),
+                sanitize_csv_cell(p.gateway_payment_id or "—"),
                 p.status.value,
                 p.created_at.strftime("%Y-%m-%d %H:%M"),
             ])

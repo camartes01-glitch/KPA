@@ -18,10 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import settings
 from app.core.database import Base
+import app.models  # Load all models for Alembic migrations
 
-# Import all models so Alembic can detect them for autogenerate
-# As models are added in later phases, import them here:
-# from app.models import user, member, district, ...
 
 # ── Alembic Config object ─────────────────────────────────────────────────────
 config = context.config

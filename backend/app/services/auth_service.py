@@ -60,8 +60,9 @@ class AuthService:
             "message": "OTP sent successfully",
             "expires_in_seconds": settings.OTP_EXPIRY_MINUTES * 60,
         }
-        if settings.OTP_DEV_MODE:
+        if settings.OTP_DEV_MODE and not settings.is_production:
             response_data["dev_code"] = code
+
 
         return response_data
 

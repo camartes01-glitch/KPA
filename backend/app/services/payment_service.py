@@ -107,12 +107,14 @@ class PaymentService:
 
         # Verify signature
         is_valid = cls.verify_razorpay_signature(gateway_order_id, gateway_payment_id, signature)
-        # Allow dev/mock test signature
-        if not is_valid and signature != "mock-valid-signature":
+        # Allow dev/mock test signature strictly in non-production environments
+        allow_mock = not settings.is_production and signature == "mock-valid-signature"
+        if not is_valid and not allow_mock:
             payment.status = PaymentStatus.FAILED
             payment.error_description = "Invalid gateway signature"
             await db.commit()
             raise HTTPException(status_code=400, detail="Invalid payment signature")
+
 
         # Settle payment
         now = datetime.now(timezone.utc)

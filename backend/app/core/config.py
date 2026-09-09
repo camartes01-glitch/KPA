@@ -5,8 +5,9 @@ Never hardcode secrets here.
 from typing import List
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 
 class Settings(BaseSettings):
@@ -140,6 +141,18 @@ class Settings(BaseSettings):
     @property
     def max_upload_size_bytes(self) -> int:
         return self.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+    @model_validator(mode="after")
+    def validate_production_safety(self) -> "Settings":
+        if self.APP_ENV == "production":
+            if self.SECRET_KEY == "changeme-development-only-replace-in-production" or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "Production safety violation: SECRET_KEY must be set to a secure string with at least 32 characters in production."
+                )
+            if self.OTP_DEV_MODE:
+                object.__setattr__(self, "OTP_DEV_MODE", False)
+        return self
+
 
 
 @lru_cache

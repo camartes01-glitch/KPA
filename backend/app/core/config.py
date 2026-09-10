@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     OTP_DEV_MODE: bool = True
     OTP_DEV_FIXED_CODE: str = "123456"
 
+    # ── Google OAuth ─────────────────────────────────────────────────────────
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_GMAIL_ONLY: bool = True
+
     # ── Supabase Storage ─────────────────────────────────────────────────────
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
@@ -148,6 +153,10 @@ class Settings(BaseSettings):
             if self.SECRET_KEY == "changeme-development-only-replace-in-production" or len(self.SECRET_KEY) < 32:
                 raise ValueError(
                     "Production safety violation: SECRET_KEY must be set to a secure string with at least 32 characters in production."
+                )
+            if not self.GOOGLE_CLIENT_ID:
+                raise ValueError(
+                    "Production safety violation: GOOGLE_CLIENT_ID must be configured in production."
                 )
             if self.OTP_DEV_MODE:
                 object.__setattr__(self, "OTP_DEV_MODE", False)

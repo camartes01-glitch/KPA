@@ -57,13 +57,19 @@ class VerifyOTPRequest(BaseModel):
         return v
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(..., description="Google OAuth2 ID token from Google Identity Services")
+    device_name: Optional[str] = None
+    device_id: Optional[str] = None
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(..., description="JWT refresh token")
 
 
 class UserRead(BaseModel):
     id: uuid.UUID
-    phone: str
+    phone: Optional[str] = None
     name: Optional[str] = None
     email: Optional[str] = None
     role: UserRole

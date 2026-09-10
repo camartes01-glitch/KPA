@@ -157,7 +157,7 @@ export default function DashboardPage() {
             </span>
           </div>
           <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>
-            Welcome back, <strong>{user?.name || user?.phone}</strong>. Real-time metrics from the KPA Welfare Engine.
+            Welcome back, <strong>{user?.name || user?.email || user?.phone || 'User'}</strong>. Real-time metrics from the KPA Welfare Engine.
           </p>
         </div>
 

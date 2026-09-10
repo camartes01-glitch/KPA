@@ -9,11 +9,49 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db, require_roles
 from app.models.user import User, UserRole
-from app.schemas.auth import RefreshTokenRequest, SendOTPRequest, TokenResponse, UserRead, VerifyOTPRequest
+from app.schemas.auth import (
+    GoogleAuthRequest,
+    RefreshTokenRequest,
+    SendOTPRequest,
+    TokenResponse,
+    UserRead,
+    VerifyOTPRequest,
+)
 from app.schemas.common import APIResponse
 from app.services.auth_service import AuthService
+from app.services.google_auth_service import GoogleAuthService
 
 router = APIRouter()
+
+
+@router.post(
+    "/google",
+    response_model=APIResponse[TokenResponse],
+    summary="Authenticate with Google OAuth ID token",
+)
+async def auth_google(
+    payload: GoogleAuthRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify submitted Google ID token, provision or link user, create session, and issue JWT tokens."""
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    tokens = await GoogleAuthService.authenticate_with_google(
+        db=db,
+        id_token_str=payload.id_token,
+        device_name=payload.device_name,
+        device_id=payload.device_id,
+        ip_address=client_ip,
+        user_agent=user_agent,
+    )
+    return APIResponse(
+        success=True,
+        message="Authentication successful",
+        data=tokens,
+    )
+
 
 
 @router.post(

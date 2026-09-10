@@ -1,123 +1,136 @@
 /**
- * Login Page — mobile number + OTP authentication flow.
+ * Login Page — Google OAuth 2.0 Single Sign-On.
+ * Replaces mobile OTP with Google Identity Services.
  */
-import { useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import { toast } from 'react-toastify'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 
-const mobileSchema = z.object({
-  mobile: z
-    .string()
-    .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number'),
-})
-
-const otpSchema = z.object({
-  otp: z.string().length(6, 'OTP must be 6 digits').regex(/^\d+$/, 'OTP must be numeric'),
-})
-
-type MobileForm = z.infer<typeof mobileSchema>
-type OtpForm = z.infer<typeof otpSchema>
-
 export default function LoginPage() {
-  const [step, setStep] = useState<'mobile' | 'otp'>('mobile')
-  const [mobile, setMobile] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const googleBtnRef = useRef<HTMLDivElement>(null)
+
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
 
-  const mobileForm = useForm<MobileForm>({ resolver: zodResolver(mobileSchema) })
-  const otpForm = useForm<OtpForm>({ resolver: zodResolver(otpSchema) })
+  const rawClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
+  const isConfigured = Boolean(
+    rawClientId &&
+      !rawClientId.includes('YOUR_GOOGLE_CLIENT_ID') &&
+      !rawClientId.startsWith('<')
+  )
 
-  const handleRequestOtp = async (data: MobileForm) => {
-    setLoading(true)
-    try {
-      await api.post('/auth/otp/send', { phone: data.mobile })
-      setMobile(data.mobile)
-      setStep('otp')
-      toast.success('OTP sent successfully')
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(msg || 'Failed to send OTP. Please try again.')
-    } finally {
-      setLoading(false)
+  const handleGoogleCredentialResponse = async (response: { credential: string }) => {
+    if (!response?.credential) {
+      toast.error('No credential received from Google.')
+      return
     }
-  }
 
-  const handleVerifyOtp = async (data: OtpForm) => {
     setLoading(true)
+    setErrorMessage(null)
     try {
-      const response = await api.post('/auth/otp/verify', {
-        phone: mobile,
-        otp: data.otp,
+      const res = await api.post('/auth/google', {
+        id_token: response.credential,
       })
-      const { user, access_token, refresh_token } = response.data.data
+
+      const { user, access_token, refresh_token } = res.data.data
       setAuth(user, access_token, refresh_token)
-      toast.success(`Welcome back, ${user.name || 'User'}!`)
+      toast.success(`Welcome, ${user.name || user.email}!`)
       navigate('/dashboard')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(msg || 'Invalid OTP. Please try again.')
+      const msg =
+        (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data?.detail ||
+        (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data?.message ||
+        'Google authentication failed. Please try again.'
+      setErrorMessage(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleQuickDemoLogin = async (phone: string) => {
-    setLoading(true)
-    try {
-      await api.post('/auth/otp/send', { phone })
-      setMobile(phone)
-      const response = await api.post('/auth/otp/verify', {
-        phone,
-        otp: '123456',
-      })
-      const { user, access_token, refresh_token } = response.data.data
-      setAuth(user, access_token, refresh_token)
-      toast.success(`Logged in as ${user.name || user.role}`)
-      navigate('/dashboard')
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(msg || 'Demo login failed. Ensure backend is running.')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (!isConfigured) return
+
+    const initGsi = () => {
+      if (window.google?.accounts?.id && googleBtnRef.current) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: rawClientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          })
+
+          googleBtnRef.current.innerHTML = ''
+          window.google.accounts.id.renderButton(googleBtnRef.current, {
+            theme: 'outline',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'rectangular',
+            width: 340,
+            logo_alignment: 'left',
+          })
+        } catch (e) {
+          console.error('Failed to initialize Google Sign-In button', e)
+        }
+      }
     }
-  }
+
+    if (window.google?.accounts?.id) {
+      initGsi()
+    } else {
+      const timer = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          clearInterval(timer)
+          initGsi()
+        }
+      }, 200)
+      return () => clearInterval(timer)
+    }
+  }, [isConfigured, rawClientId])
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, var(--color-primary-900) 0%, var(--color-primary-700) 60%, var(--color-primary-500) 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 'var(--space-4)',
-    }}>
-      <div style={{
-        background: 'var(--bg-surface)',
-        borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-10)',
-        width: '100%',
-        maxWidth: 420,
-        boxShadow: 'var(--shadow-xl)',
-      }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background:
+          'linear-gradient(135deg, var(--color-primary-900) 0%, var(--color-primary-700) 60%, var(--color-primary-500) 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          borderRadius: 'var(--radius-xl)',
+          padding: 'var(--space-10)',
+          width: '100%',
+          maxWidth: 420,
+          boxShadow: 'var(--shadow-xl)',
+          textAlign: 'center',
+        }}
+      >
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-          <div style={{
-            width: 72,
-            height: 72,
-            background: 'linear-gradient(135deg, var(--color-primary-700), var(--color-primary-500))',
-            borderRadius: 'var(--radius-xl)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto var(--space-4)',
-            boxShadow: '0 8px 24px rgba(26,58,107,0.4)',
-          }}>
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              background: 'linear-gradient(135deg, var(--color-primary-700), var(--color-primary-500))',
+              borderRadius: 'var(--radius-xl)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto var(--space-4)',
+              boxShadow: '0 8px 24px rgba(26,58,107,0.4)',
+            }}
+          >
             <span style={{ fontSize: 32 }}>📷</span>
           </div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 800, color: 'var(--color-primary-700)' }}>
@@ -128,151 +141,75 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {step === 'mobile' ? (
-          <form onSubmit={mobileForm.handleSubmit(handleRequestOtp)}>
-            <div style={{ marginBottom: 'var(--space-6)' }}>
-              <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: 4 }}>
-                Sign In
-              </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                Enter your registered mobile number
-              </p>
-            </div>
+        <div style={{ marginBottom: 'var(--space-6)', textAlign: 'left' }}>
+          <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: 4 }}>
+            Sign In with Google
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+            Please use your registered Google account (@gmail.com) to access the welfare management portal.
+          </p>
+        </div>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="mobile">Mobile Number</label>
-              <input
-                id="mobile"
-                className="form-input"
-                type="tel"
-                placeholder="9876543210"
-                maxLength={10}
-                {...mobileForm.register('mobile')}
-              />
-              {mobileForm.formState.errors.mobile && (
-                <span className="form-error">
-                  {mobileForm.formState.errors.mobile.message}
-                </span>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-              style={{ width: '100%', justifyContent: 'center', padding: 'var(--space-3)' }}
-            >
-              {loading ? <span className="spinner" style={{ width: 18, height: 18 }} /> : 'Send OTP'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={otpForm.handleSubmit(handleVerifyOtp)}>
-            <div style={{ marginBottom: 'var(--space-6)' }}>
-              <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: 4 }}>
-                Enter OTP
-              </h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                OTP sent to <strong>+91 {mobile}</strong>
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="otp">One-Time Password</label>
-              <input
-                id="otp"
-                className="form-input"
-                type="text"
-                inputMode="numeric"
-                placeholder="123456"
-                maxLength={6}
-                style={{
-                  fontSize: 'var(--font-size-2xl)',
-                  letterSpacing: '0.3em',
-                  textAlign: 'center',
-                  fontWeight: 700,
-                }}
-                {...otpForm.register('otp')}
-              />
-              {otpForm.formState.errors.otp && (
-                <span className="form-error">
-                  {otpForm.formState.errors.otp.message}
-                </span>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-              style={{ width: '100%', justifyContent: 'center', padding: 'var(--space-3)', marginBottom: 'var(--space-3)' }}
-            >
-              {loading ? <span className="spinner" style={{ width: 18, height: 18 }} /> : 'Verify & Login'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStep('mobile')}
-              className="btn btn-secondary"
-              style={{ width: '100%', justifyContent: 'center' }}
-            >
-              Change Number
-            </button>
-          </form>
+        {errorMessage && (
+          <div
+            id="login-error-banner"
+            style={{
+              padding: 'var(--space-3)',
+              marginBottom: 'var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              background: '#fee2e2',
+              border: '1px solid #ef4444',
+              color: '#b91c1c',
+              fontSize: 'var(--font-size-sm)',
+              textAlign: 'left',
+            }}
+          >
+            {errorMessage}
+          </div>
         )}
 
-        {/* Quick Demo Login Helper for Testing */}
-        <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-6)', borderTop: '1px solid var(--border-default)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-primary-600)' }}>
-              Quick Demo Personas (Dev Mode)
-            </span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
-            <button
-              type="button"
-              id="demo-btn-state-head"
-              disabled={loading}
-              onClick={() => handleQuickDemoLogin('9900000001')}
-              className="btn btn-secondary"
-              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
+        {/* Google Identity Services Container */}
+        <div style={{ minHeight: 48, display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-primary-700)' }}>
+              <span className="spinner" style={{ width: 22, height: 22 }} />
+              <span>Verifying account with Google...</span>
+            </div>
+          ) : isConfigured ? (
+            <div ref={googleBtnRef} id="google-signin-btn" />
+          ) : (
+            <div
+              id="oauth-client-id-required-notice"
+              style={{
+                background: '#f8fafc',
+                border: '1px dashed #cbd5e1',
+                borderRadius: 'var(--radius-lg)',
+                padding: 'var(--space-4)',
+                width: '100%',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+              }}
             >
-              <strong style={{ color: 'var(--color-primary-700)' }}>State Head</strong>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>9900000001</span>
-            </button>
-            <button
-              type="button"
-              id="demo-btn-district-admin"
-              disabled={loading}
-              onClick={() => handleQuickDemoLogin('9900000002')}
-              className="btn btn-secondary"
-              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
-            >
-              <strong style={{ color: 'var(--color-primary-700)' }}>District Admin</strong>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BLR Urban</span>
-            </button>
-            <button
-              type="button"
-              id="demo-btn-taluka-admin"
-              disabled={loading}
-              onClick={() => handleQuickDemoLogin('9900000003')}
-              className="btn btn-secondary"
-              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
-            >
-              <strong style={{ color: 'var(--color-primary-700)' }}>Taluka Admin</strong>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BLR North</span>
-            </button>
-            <button
-              type="button"
-              id="demo-btn-member"
-              disabled={loading}
-              onClick={() => handleQuickDemoLogin('9900000004')}
-              className="btn btn-secondary"
-              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
-            >
-              <strong style={{ color: 'var(--color-primary-700)' }}>Member</strong>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Prakash Hegde</span>
-            </button>
-          </div>
+              <strong style={{ color: 'var(--color-primary-700)', display: 'block', marginBottom: 4 }}>
+                OAuth Client ID Required
+              </strong>
+              Configure <code style={{ color: '#0f172a' }}>VITE_GOOGLE_CLIENT_ID</code> in <code style={{ color: '#0f172a' }}>apps/web/.env</code> to activate the Google Sign-In button.
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            marginTop: 'var(--space-6)',
+            paddingTop: 'var(--space-4)',
+            borderTop: '1px solid var(--border-default)',
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--text-muted)',
+            lineHeight: 1.6,
+          }}
+        >
+          <span>Official member & administrator portal. Protected by Google Identity Services and KPA Role-Based Access Control.</span>
         </div>
       </div>
     </div>

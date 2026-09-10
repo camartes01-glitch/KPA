@@ -167,7 +167,7 @@ export default function RolesPage() {
                         {adm.name || 'Admin User'}
                       </div>
                       <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {adm.phone} • {adm.email || 'No email registered'}
+                        {[adm.phone, adm.email || 'No email registered'].filter(Boolean).join(' • ')}
                       </div>
                     </td>
 

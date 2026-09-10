@@ -6,15 +6,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type UserRole = 'STATE_HEAD' | 'DISTRICT_ADMIN' | 'TALUKA_ADMIN' | 'MEMBER'
+export type UserRole = 'STATE_HEAD' | 'DISTRICT_ADMIN' | 'TALUKA_ADMIN' | 'AUDITOR' | 'MEMBER'
 
 export interface AuthUser {
   id: string
-  name: string
-  mobile: string
+  name?: string | null
+  phone?: string
+  mobile?: string
+  email?: string | null
   role: UserRole
-  districtId?: string
-  talukaId?: string
+  status?: string
+  district_id?: string | null
+  taluka_id?: string | null
 }
 
 interface AuthState {

@@ -13,24 +13,24 @@ import { api } from '@/lib/api'
 
 const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/members',       icon: Users,            label: 'Members' },
+  { to: '/members',       icon: Users,            label: 'Members',          roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
   { to: '/welfare-events',icon: Heart,            label: 'Welfare Events' },
-  { to: '/payments',      icon: CreditCard,       label: 'Payments' },
+  { to: '/payments',      icon: CreditCard,       label: 'Payments',         roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
   { to: '/notifications', icon: Bell,             label: 'Notifications' },
-  { to: '/reports',       icon: BarChart3,        label: 'Reports' },
-  { to: '/audit-logs',    icon: Shield,           label: 'Audit Logs',    roles: ['STATE_HEAD'] },
-  { to: '/roles',         icon: UserCheck,        label: 'Role Management', roles: ['STATE_HEAD', 'DISTRICT_ADMIN'] },
+  { to: '/reports',       icon: BarChart3,        label: 'Reports',          roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
+  { to: '/audit-logs',    icon: Shield,           label: 'Audit Logs',       roles: ['STATE_HEAD', 'AUDITOR'] },
+  { to: '/roles',         icon: UserCheck,        label: 'Role Management',  roles: ['STATE_HEAD', 'DISTRICT_ADMIN'] },
   { to: '/settings',      icon: Settings,         label: 'Settings' },
 ]
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
-  const { user, logout } = useAuthStore()
+  const { user, logout, refreshToken } = useAuthStore()
   const navigate = useNavigate()
 
   const handleLogout = async () => {
     try {
-      await api.post('/auth/logout')
+      await api.post('/auth/logout', { refresh_token: refreshToken })
     } catch {
       // Proceed with local logout regardless
     }

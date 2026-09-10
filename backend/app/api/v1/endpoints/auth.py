@@ -1,13 +1,14 @@
 """
 Authentication Endpoints — OTP login, token refresh, logout, and current user profile.
 """
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
-from app.models.user import User
+from app.api.deps import get_current_user, get_db, require_roles
+from app.models.user import User, UserRole
 from app.schemas.auth import RefreshTokenRequest, SendOTPRequest, TokenResponse, UserRead, VerifyOTPRequest
 from app.schemas.common import APIResponse
 from app.services.auth_service import AuthService
@@ -123,4 +124,30 @@ async def get_me(
         success=True,
         message="Profile retrieved",
         data=UserRead.model_validate(current_user),
+    )
+
+
+@router.get(
+    "/admins",
+    response_model=APIResponse[List[UserRead]],
+    summary="List administrative users (STATE_HEAD & DISTRICT_ADMIN only)",
+)
+async def list_admins(
+    current_user: User = Depends(require_roles(UserRole.STATE_HEAD, UserRole.DISTRICT_ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve list of administrators scoped by jurisdiction."""
+    stmt = select(User).where(
+        User.role.in_([UserRole.STATE_HEAD, UserRole.DISTRICT_ADMIN, UserRole.TALUKA_ADMIN, UserRole.AUDITOR])
+    )
+    if current_user.role == UserRole.DISTRICT_ADMIN:
+        stmt = stmt.where(User.district_id == current_user.district_id)
+
+    stmt = stmt.order_by(User.role, User.name)
+    result = await db.execute(stmt)
+    admins = result.scalars().all()
+    return APIResponse(
+        success=True,
+        message="Administrators retrieved",
+        data=[UserRead.model_validate(u) for u in admins],
     )

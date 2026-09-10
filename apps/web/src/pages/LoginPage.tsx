@@ -36,7 +36,7 @@ export default function LoginPage() {
   const handleRequestOtp = async (data: MobileForm) => {
     setLoading(true)
     try {
-      await api.post('/auth/request-otp', { mobile: data.mobile })
+      await api.post('/auth/otp/send', { phone: data.mobile })
       setMobile(data.mobile)
       setStep('otp')
       toast.success('OTP sent successfully')
@@ -51,16 +51,38 @@ export default function LoginPage() {
   const handleVerifyOtp = async (data: OtpForm) => {
     setLoading(true)
     try {
-      const response = await api.post('/auth/verify-otp', {
-        mobile,
+      const response = await api.post('/auth/otp/verify', {
+        phone: mobile,
         otp: data.otp,
       })
       const { user, access_token, refresh_token } = response.data.data
       setAuth(user, access_token, refresh_token)
+      toast.success(`Welcome back, ${user.name || 'User'}!`)
       navigate('/dashboard')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(msg || 'Invalid OTP. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleQuickDemoLogin = async (phone: string) => {
+    setLoading(true)
+    try {
+      await api.post('/auth/otp/send', { phone })
+      setMobile(phone)
+      const response = await api.post('/auth/otp/verify', {
+        phone,
+        otp: '123456',
+      })
+      const { user, access_token, refresh_token } = response.data.data
+      setAuth(user, access_token, refresh_token)
+      toast.success(`Logged in as ${user.name || user.role}`)
+      navigate('/dashboard')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(msg || 'Demo login failed. Ensure backend is running.')
     } finally {
       setLoading(false)
     }
@@ -197,6 +219,61 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+
+        {/* Quick Demo Login Helper for Testing */}
+        <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-6)', borderTop: '1px solid var(--border-default)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-primary-600)' }}>
+              Quick Demo Personas (Dev Mode)
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              id="demo-btn-state-head"
+              disabled={loading}
+              onClick={() => handleQuickDemoLogin('9900000001')}
+              className="btn btn-secondary"
+              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
+            >
+              <strong style={{ color: 'var(--color-primary-700)' }}>State Head</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>9900000001</span>
+            </button>
+            <button
+              type="button"
+              id="demo-btn-district-admin"
+              disabled={loading}
+              onClick={() => handleQuickDemoLogin('9900000002')}
+              className="btn btn-secondary"
+              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
+            >
+              <strong style={{ color: 'var(--color-primary-700)' }}>District Admin</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BLR Urban</span>
+            </button>
+            <button
+              type="button"
+              id="demo-btn-taluka-admin"
+              disabled={loading}
+              onClick={() => handleQuickDemoLogin('9900000003')}
+              className="btn btn-secondary"
+              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
+            >
+              <strong style={{ color: 'var(--color-primary-700)' }}>Taluka Admin</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BLR North</span>
+            </button>
+            <button
+              type="button"
+              id="demo-btn-member"
+              disabled={loading}
+              onClick={() => handleQuickDemoLogin('9900000004')}
+              className="btn btn-secondary"
+              style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}
+            >
+              <strong style={{ color: 'var(--color-primary-700)' }}>Member</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Prakash Hegde</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

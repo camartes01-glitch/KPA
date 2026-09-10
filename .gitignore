@@ -25,6 +25,9 @@ pip-delete-this-directory.txt
 htmlcov/
 .pytest_cache/
 *.log
+*.db
+*.sqlite
+*.sqlite3
 
 # ─── Alembic ────────────────────────────────────────────────────────────────
 # Keep migrations but not generated temp files

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -12,58 +12,142 @@ import {
 } from 'react-native'
 import { colors } from '../theme/colors'
 import { useAuthStore } from '../store/authStore'
-
+import { api, checkBackendHealth, getErrorMessage, BASE_URL } from '../services/api'
 export default function LoginScreen() {
   const [step, setStep] = useState<'phone' | 'otp'>('phone')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
-  const setAuth = useAuthStore((state) => state.setAuth)
+  const [resending, setResending] = useState(false)
+  const [cooldown, setCooldown] = useState(0)
+  const [checkingHealth, setCheckingHealth] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
+  const { setAuth, updateUser } = useAuthStore()
+
+  useEffect(() => {
+    let timer: any
+    if (cooldown > 0) {
+      timer = setInterval(() => {
+        setCooldown((prev) => (prev > 0 ? prev - 1 : 0))
+      }, 1000)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [cooldown])
 
   const handleSendOtp = async () => {
-    if (!phone || phone.length < 10) {
-      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number')
+    setErrorMessage(null)
+    setInfoMessage(null)
+    const cleaned = phone.replace(/\D/g, '')
+    if (!cleaned || cleaned.length !== 10) {
+      const msg = 'Please enter a valid 10-digit mobile number'
+      setErrorMessage(msg)
+      Alert.alert('Invalid Phone', msg)
       return
     }
     setLoading(true)
     try {
-      // Phase 2 real OTP endpoint integration
-      setTimeout(() => {
-        setLoading(false)
-        setStep('otp')
-      }, 600)
-    } catch {
+      const res = await api.post('/auth/otp/send', { phone: cleaned })
+      const devCode = res.data?.data?.dev_code
+      setStep('otp')
+      setCooldown(30)
+      const successMsg = devCode
+        ? `OTP Sent! Verification code: ${devCode}`
+        : 'OTP Sent! Please check your SMS for verification code.'
+      setInfoMessage(successMsg)
+      Alert.alert('OTP Sent', successMsg)
+    } catch (err: any) {
+      const msg = getErrorMessage(err)
+      setErrorMessage(msg)
+      Alert.alert('Unable to Send OTP', msg)
+    } finally {
       setLoading(false)
-      Alert.alert('Error', 'Unable to send OTP. Please try again.')
+    }
+  }
+
+  const handleResendOtp = async () => {
+    if (cooldown > 0 || resending) return
+    const cleaned = phone.replace(/\D/g, '')
+    if (!cleaned || cleaned.length !== 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number')
+      return
+    }
+    setResending(true)
+    try {
+      const res = await api.post('/auth/otp/send', { phone: cleaned })
+      const devCode = res.data?.data?.dev_code
+      setCooldown(30)
+      if (devCode) {
+        Alert.alert('OTP Resent', `Verification code: ${devCode}`)
+      } else {
+        Alert.alert('OTP Resent', 'A fresh OTP has been sent to your mobile number.')
+      }
+    } catch (err: any) {
+      Alert.alert('Unable to Resend OTP', getErrorMessage(err))
+    } finally {
+      setResending(false)
     }
   }
 
   const handleVerifyOtp = async () => {
-    if (!otp || otp.length !== 6) {
+    const cleanedOtp = otp.trim()
+    if (!cleanedOtp || cleanedOtp.length !== 6) {
       Alert.alert('Invalid OTP', 'Please enter the 6-digit OTP')
       return
     }
     setLoading(true)
     try {
-      setTimeout(() => {
-        setLoading(false)
-        // Login mock payload until Phase 2 backend verification is live
-        setAuth(
-          {
-            id: 'mem-101',
-            phone: `+91${phone}`,
-            name: 'KPA Member',
-            role: 'MEMBER',
-            membership_no: 'KPA-BLR-0042',
-            district: 'Bengaluru Urban',
-            is_active: true,
-          },
-          'mock-jwt-token'
-        )
-      }, 600)
-    } catch {
+      const cleanedPhone = phone.replace(/\D/g, '')
+      const res = await api.post('/auth/otp/verify', {
+        phone: cleanedPhone,
+        otp: cleanedOtp,
+        device_name: `${Platform.OS} Mobile App`,
+      })
+      const { user, access_token, refresh_token } = res.data.data
+      setAuth(user, access_token, refresh_token)
+
+      // Fetch enriched member profile in background
+      try {
+        const memberRes = await api.get('/members/me', {
+          headers: { Authorization: `Bearer ${access_token}` },
+        })
+        if (memberRes.data?.data) {
+          const m = memberRes.data.data
+          updateUser({
+            membership_no: m.membership_no,
+            studio_name: m.studio_name,
+            status: m.status,
+          })
+        }
+      } catch {
+        // Fallback to basic user profile if member record is pending
+      }
+    } catch (err: any) {
+      Alert.alert('Verification Failed', getErrorMessage(err))
+    } finally {
       setLoading(false)
-      Alert.alert('Verification Failed', 'Invalid OTP entered')
+    }
+  }
+
+  const handleCheckHealth = async () => {
+    setCheckingHealth(true)
+    try {
+      const res = await checkBackendHealth()
+      if (res.ok) {
+        Alert.alert(
+          'Server Connected',
+          `Successfully reached KPA Welfare server:\n${BASE_URL}\n\nStatus: ${res.data?.status || 'OK'}`
+        )
+      } else {
+        Alert.alert(
+          'Connection Failed',
+          `Could not connect to:\n${BASE_URL}\n\n${res.error}\n\nPlease check your internet connection or server availability.`
+        )
+      }
+    } finally {
+      setCheckingHealth(false)
     }
   }
 
@@ -90,6 +174,21 @@ export default function LoginScreen() {
             : `OTP sent to +91 ${phone}`}
         </Text>
 
+        {typeof __DEV__ !== 'undefined' && __DEV__ && (
+          <TouchableOpacity
+            style={styles.demoBanner}
+            onPress={() => {
+              if (step === 'phone') setPhone('9900000004')
+              else setOtp('123456')
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.demoBannerText}>
+              ⚙️ LOCAL DEMO MODE: Tap to fill demo {step === 'phone' ? 'phone (9900000004)' : 'OTP (123456)'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {step === 'phone' ? (
           <View style={styles.inputRow}>
             <Text style={styles.prefix}>+91</Text>
@@ -115,10 +214,23 @@ export default function LoginScreen() {
           />
         )}
 
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorBoxText}>{errorMessage}</Text>
+          </View>
+        ) : null}
+
+        {infoMessage ? (
+          <View style={styles.infoBox}>
+            <Text style={styles.infoBoxText}>{infoMessage}</Text>
+          </View>
+        ) : null}
+
         <TouchableOpacity
           style={styles.button}
           onPress={step === 'phone' ? handleSendOtp : handleVerifyOtp}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator color={colors.neutral.white} />
@@ -130,13 +242,49 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         {step === 'otp' && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => setStep('phone')}
-          >
-            <Text style={styles.backButtonText}>Change Mobile Number</Text>
-          </TouchableOpacity>
+          <View style={styles.otpActionRow}>
+            <TouchableOpacity
+              style={styles.resendButton}
+              onPress={handleResendOtp}
+              disabled={cooldown > 0 || resending}
+              activeOpacity={0.7}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color={colors.primary[700]} />
+              ) : (
+                <Text
+                  style={[
+                    styles.resendButtonText,
+                    cooldown > 0 && styles.resendDisabledText,
+                  ]}
+                >
+                  {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setStep('phone')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backButtonText}>Change Number</Text>
+            </TouchableOpacity>
+          </View>
         )}
+
+        <TouchableOpacity
+          style={styles.healthButton}
+          onPress={handleCheckHealth}
+          disabled={checkingHealth}
+          activeOpacity={0.7}
+        >
+          {checkingHealth ? (
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+          ) : (
+            <Text style={styles.healthButtonText}>Check Server Connection</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   )
@@ -190,7 +338,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.neutral.textSecondary,
     marginTop: 4,
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  demoBanner: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  demoBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400e',
+    textAlign: 'center',
   },
   inputRow: {
     flexDirection: 'row',
@@ -237,13 +400,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  backButton: {
-    marginTop: 14,
+  otpActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 14,
+    paddingHorizontal: 4,
+  },
+  resendButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  resendButtonText: {
+    color: colors.primary[700],
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resendDisabledText: {
+    color: colors.neutral.textMuted,
+    fontWeight: '500',
+  },
+  backButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   backButtonText: {
-    color: colors.primary[500],
+    color: colors.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  healthButton: {
+    marginTop: 18,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  healthButtonText: {
+    color: colors.neutral.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+  errorBox: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#fca5a5',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  errorBoxText: {
+    color: '#991b1b',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  infoBox: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#93c5fd',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  infoBoxText: {
+    color: '#1e40af',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 })

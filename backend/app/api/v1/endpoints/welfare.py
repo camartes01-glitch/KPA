@@ -71,6 +71,11 @@ async def list_welfare_events(
     response_model=APIResponse[List[WelfareObligationRead]],
     summary="Get current member's contribution obligations",
 )
+@router.get(
+    "/my-contributions",
+    response_model=APIResponse[List[WelfareObligationRead]],
+    include_in_schema=False,
+)
 async def get_my_obligations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -108,3 +113,22 @@ async def get_welfare_event(
         message="Welfare event details retrieved",
         data=WelfareEventRead.model_validate(event),
     )
+
+
+@router.get(
+    "/{event_id}/contributions",
+    response_model=APIResponse[dict],
+    summary="Get detailed contribution progress, paid/unpaid members breakdown",
+)
+async def get_welfare_event_contributions(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve event contribution progress and members status list."""
+    breakdown = await WelfareService.get_event_contributions_breakdown(db, event_id)
+    return APIResponse(
+        success=True,
+        message="Event contributions breakdown retrieved",
+        data=breakdown,
+    )
+

@@ -232,7 +232,7 @@ export default function AuditLogsPage() {
                     </td>
 
                     <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                      <div>{log.ip_address || '127.0.0.1'}</div>
+                      <div>{log.ip_address || '—'}</div>
                       <div style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {log.user_agent || 'Client'}
                       </div>

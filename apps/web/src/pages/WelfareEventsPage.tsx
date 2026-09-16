@@ -1,12 +1,12 @@
 /**
- * Welfare Events Page — Active relief events, member contribution tracking, and relief case initiation.
+ * Welfare Events Page — Active relief events, member contribution tracking, and relief case declaration.
  */
 import { useEffect, useState } from 'react'
 import {
   Heart,
   RefreshCw,
-  Clock,
-  Check,
+  Plus,
+  Eye,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
@@ -15,58 +15,87 @@ import { toast } from 'react-toastify'
 interface WelfareEventItem {
   id: string
   title: string
-  description?: string | null
-  deceased_member_id?: string
-  deceased_member_name?: string
+  deceased_member_id: string
   cause_of_death?: string | null
-  death_date?: string | null
+  death_date: string
   target_amount: number
   collected_amount: number
-  contribution_per_member?: number
   status: 'ACTIVE' | 'CLOSED' | 'SETTLED' | string
   created_at: string
 }
 
-interface ObligationItem {
-  id?: string
-  contribution_id?: string
+interface MemberOption {
+  id: string
+  membership_no?: string
+  full_name: string
+  phone?: string
+  status: string
+}
+
+interface ContributionDetail {
+  contribution_id: string
+  member_id: string
+  member_name: string
+  membership_no?: string | null
+  amount: number
+  status: string
+  paid_at?: string | null
+  payment_method?: string | null
+}
+
+interface EventBreakdown {
   event_id: string
   event_title: string
-  deceased_member_name?: string
-  amount: number
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | string
-  payment_method?: string | null
-  paid_at?: string | null
-  created_at: string
+  status: string
+  target_amount: number
+  collected_amount: number
+  pending_amount: number
+  collection_percentage: number
+  total_obligated_members: number
+  paid_count: number
+  unpaid_count: number
+  contributions: ContributionDetail[]
 }
 
 export default function WelfareEventsPage() {
   const { user } = useAuthStore()
   const [events, setEvents] = useState<WelfareEventItem[]>([])
-  const [obligations, setObligations] = useState<ObligationItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  const isMember = user?.role === 'MEMBER'
+  // Declare Modal
+  const [showDeclareModal, setShowDeclareModal] = useState(false)
+  const [approvedMembers, setApprovedMembers] = useState<MemberOption[]>([])
+  const [selectedMemberId, setSelectedMemberId] = useState('')
+  const [caseTitle, setCaseTitle] = useState('')
+  const [deathDate, setDeathDate] = useState('')
+  const [causeOfDeath, setCauseOfDeath] = useState('')
+  const [certificateUrl, setCertificateUrl] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  // Breakdown Modal
+  const [activeBreakdown, setActiveBreakdown] = useState<EventBreakdown | null>(null)
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+
+  const isStateHead = user?.role === 'STATE_HEAD'
 
   const fetchData = async () => {
     setLoading(true)
     try {
       const res = await api.get('/welfare-events')
       setEvents(res.data.data || [])
-
-      if (isMember) {
-        try {
-          const obRes = await api.get('/welfare-events/my-obligations')
-          setObligations(obRes.data.data || [])
-        } catch {
-          // Member might not have a profile yet
-        }
-      }
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(msg || 'Failed to load welfare events')
+    } catch {
+      toast.error('Failed to load welfare events')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadApprovedMembers = async () => {
+    try {
+      const res = await api.get('/members', { params: { status: 'APPROVED', page_size: 100 } })
+      setApprovedMembers(res.data.data || [])
+    } catch {
+      toast.error('Failed to load member directory for selection')
     }
   }
 
@@ -74,8 +103,66 @@ export default function WelfareEventsPage() {
     fetchData()
   }, [])
 
+  const handleOpenDeclareModal = () => {
+    setShowDeclareModal(true)
+    loadApprovedMembers()
+    setDeathDate(new Date().toISOString().split('T')[0])
+  }
+
+  const handleMemberSelect = (memberId: string) => {
+    setSelectedMemberId(memberId)
+    const m = approvedMembers.find((mem) => mem.id === memberId)
+    if (m) {
+      setCaseTitle(`Bereavement & Family Emergency Relief for Late ${m.full_name}`)
+    }
+  }
+
+  const handleDeclareEvent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedMemberId) {
+      toast.warn('Please select a deceased member.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await api.post('/welfare-events', {
+        deceased_member_id: selectedMemberId,
+        title: caseTitle,
+        death_date: deathDate,
+        cause_of_death: causeOfDeath || undefined,
+        death_certificate_url: certificateUrl || undefined,
+      })
+      toast.success('Welfare event declared! Mutual ₹10 obligations generated statewide.')
+      setShowDeclareModal(false)
+      setSelectedMemberId('')
+      setCaseTitle('')
+      setCauseOfDeath('')
+      setCertificateUrl('')
+      fetchData()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg || 'Failed to declare welfare event')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const viewEventBreakdown = async (eventId: string) => {
+    setLoadingBreakdown(true)
+    try {
+      const res = await api.get(`/welfare-events/${eventId}/contributions`)
+      setActiveBreakdown(res.data.data)
+    } catch {
+      toast.error('Failed to fetch event contributions breakdown')
+    } finally {
+      setLoadingBreakdown(false)
+    }
+  }
+
   return (
     <div>
+      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -87,13 +174,25 @@ export default function WelfareEventsPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 800, margin: 0 }}>Welfare Events</h1>
+          <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 800, margin: 0 }}>
+            Welfare Relief Cases
+          </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>
-            Mutual relief funds, death benefit distributions, and photographer family support cases.
+            Statewide mutual relief distributions, ₹10 levy collections, and death benefit disbursements.
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          {isStateHead && (
+            <button
+              onClick={handleOpenDeclareModal}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <Plus size={16} />
+              Declare Welfare Event
+            </button>
+          )}
           <button
             onClick={fetchData}
             disabled={loading}
@@ -106,89 +205,38 @@ export default function WelfareEventsPage() {
         </div>
       </div>
 
-      {/* Member Personal Obligations Card if user is MEMBER */}
-      {isMember && (
-        <div className="card" style={{ marginBottom: 'var(--space-6)', borderLeft: '4px solid var(--color-primary-500)' }}>
-          <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
-            My Mutual Welfare Obligations
-          </h3>
-          {obligations.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', margin: 0 }}>
-              No outstanding welfare debits at this time. All contributions are up to date!
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-              {obligations.map((ob) => (
-                <div
-                  key={ob.contribution_id || ob.id || ob.event_id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--space-3)',
-                    background: 'var(--bg-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>{ob.event_title}</div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                      Amount: ₹{ob.amount} • Debit on: {new Date(ob.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 'var(--font-size-xs)',
-                      fontWeight: 700,
-                      padding: '2px 8px',
-                      borderRadius: 'var(--radius-full)',
-                      background: ob.status === 'SUCCESS' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                      color: ob.status === 'SUCCESS' ? '#059669' : '#d97706',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    {ob.status === 'SUCCESS' ? <Check size={12} /> : <Clock size={12} />}
-                    {ob.status === 'SUCCESS' ? 'Contributed' : 'Pending Payment'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Welfare Events Grid */}
       {loading ? (
         <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <div className="spinner" style={{ margin: '0 auto var(--space-4)', width: 32, height: 32 }} />
-          <p>Loading welfare cases...</p>
+          <p>Loading welfare relief events...</p>
         </div>
       ) : events.length === 0 ? (
         <div className="card" style={{ padding: 'var(--space-12) var(--space-4)', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <Heart size={48} style={{ margin: '0 auto var(--space-4)', color: 'var(--color-error-500)', opacity: 0.4 }} />
           <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-            No Active Welfare Cases
+            No Active Welfare Relief Cases
           </h3>
           <p style={{ maxWidth: 460, margin: '0 auto', fontSize: 'var(--font-size-sm)' }}>
-            When a bereavement or emergency relief case is approved by the State Head, member contributions will appear here.
+            When a bereavement or emergency relief case is declared by the State Head, statewide ₹10 member debits are generated automatically.
           </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 'var(--space-5)' }}>
           {events.map((ev) => {
-            const percent = ev.target_amount > 0 ? Math.min(100, Math.round((ev.collected_amount / ev.target_amount) * 100)) : 0
+            const target = Number(ev.target_amount) || 0
+            const collected = Number(ev.collected_amount) || 0
+            const percent = target > 0 ? Math.min(100, Math.round((collected / target) * 100)) : 0
 
             return (
               <div key={ev.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
                   <div>
-                    <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
                       {ev.title}
                     </h3>
                     <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
-                      Case: <strong>{ev.deceased_member_name || ev.title}</strong>
+                      Demise Date: {ev.death_date} • Registered: {new Date(ev.created_at).toLocaleDateString('en-IN')}
                     </div>
                   </div>
                   <span
@@ -205,37 +253,217 @@ export default function WelfareEventsPage() {
                   </span>
                 </div>
 
-                {ev.description && (
+                {ev.cause_of_death && (
                   <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
-                    {ev.description}
+                    <strong>Cause of Demise:</strong> {ev.cause_of_death}
                   </p>
                 )}
 
-                {/* Progress Bar */}
+                {/* Progress Bar & Financials */}
                 <div style={{ marginTop: 'auto', paddingTop: 'var(--space-2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--font-size-xs)', marginBottom: 4 }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Collected: <strong>₹{ev.collected_amount.toLocaleString('en-IN')}</strong></span>
-                    <span style={{ color: 'var(--text-muted)' }}>Target: ₹{ev.target_amount.toLocaleString('en-IN')}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      Collected: <strong style={{ color: '#059669' }}>₹{collected.toLocaleString('en-IN')}</strong>
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      Target: ₹{target.toLocaleString('en-IN')}
+                    </span>
                   </div>
                   <div style={{ width: '100%', height: 8, background: 'var(--bg-subtle)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
                     <div
                       style={{
                         width: `${percent}%`,
                         height: '100%',
-                        background: 'linear-gradient(90deg, var(--color-primary-500), var(--color-gold-500))',
+                        background: 'linear-gradient(90deg, var(--color-primary-600), var(--color-gold-500))',
                         borderRadius: 'var(--radius-full)',
                         transition: 'width 0.4s ease',
                       }}
                     />
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                    <span>₹{ev.contribution_per_member} per member obligation</span>
-                    <span style={{ fontWeight: 700, color: 'var(--color-primary-700)' }}>{percent}%</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 'var(--font-size-xs)' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>₹10 per active member</span>
+                    <span style={{ fontWeight: 800, color: 'var(--color-primary-700)' }}>{percent}% Collected</span>
                   </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 'var(--space-3)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => viewEventBreakdown(ev.id)}
+                    disabled={loadingBreakdown}
+                    className="btn btn-secondary"
+                    style={{ fontSize: 'var(--font-size-xs)', display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <Eye size={14} />
+                    {loadingBreakdown ? 'Loading...' : 'View Member Ledgers'}
+                  </button>
                 </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Declare Welfare Event Modal */}
+      {showDeclareModal && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 540 }}>
+            <h3 style={{ margin: '0 0 var(--space-4)' }}>Declare Welfare Relief Case</h3>
+            <form onSubmit={handleDeclareEvent} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div>
+                <label className="label">Select Deceased Member (Approved Members Only)</label>
+                <select
+                  required
+                  className="input"
+                  value={selectedMemberId}
+                  onChange={(e) => handleMemberSelect(e.target.value)}
+                >
+                  <option value="">Choose member...</option>
+                  {approvedMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.full_name} ({m.membership_no || 'No ID'}) - {m.phone || 'No phone'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Event Title / Description</label>
+                <input
+                  required
+                  className="input"
+                  placeholder="e.g. Emergency Death Relief for Late Ramesh"
+                  value={caseTitle}
+                  onChange={(e) => setCaseTitle(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                <div>
+                  <label className="label">Date of Demise</label>
+                  <input
+                    type="date"
+                    required
+                    className="input"
+                    value={deathDate}
+                    onChange={(e) => setDeathDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label">Cause of Demise (Optional)</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. Cardiac arrest, accident"
+                    value={causeOfDeath}
+                    onChange={(e) => setCauseOfDeath(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Death Certificate / Proof URL (Optional)</label>
+                <input
+                  type="url"
+                  className="input"
+                  placeholder="https://storage.../certificate.pdf"
+                  value={certificateUrl}
+                  onChange={(e) => setCertificateUrl(e.target.value)}
+                />
+              </div>
+
+              <div style={{ background: 'var(--color-primary-50)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--font-size-xs)', color: 'var(--color-primary-800)' }}>
+                <strong>Automated Statewide Settlement Rule:</strong>
+                <p style={{ margin: '4px 0 0' }}>
+                  Upon declaration, the backend automatically debits exactly ₹10 from all active verified members statewide into an emergency escrow relief pool.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+                <button type="button" onClick={() => setShowDeclareModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Declaring...' : 'Declare & Dispatch Alerts'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Member Contributions Breakdown Modal */}
+      {activeBreakdown && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 680, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>{activeBreakdown.event_title}</h3>
+                <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                  Statewide Member Ledger & Settlement Breakdown
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveBreakdown(null)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Metrics Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+              <div style={{ background: 'var(--bg-subtle)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Target Relief</div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>₹{activeBreakdown.target_amount}</div>
+              </div>
+              <div style={{ background: 'var(--bg-subtle)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Collected (Paid)</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>₹{activeBreakdown.collected_amount}</div>
+              </div>
+              <div style={{ background: 'var(--bg-subtle)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Pending Dues</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#d97706' }}>₹{activeBreakdown.pending_amount}</div>
+              </div>
+              <div style={{ background: 'var(--bg-subtle)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Compliance</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-primary-700)' }}>
+                  {activeBreakdown.collection_percentage}%
+                </div>
+              </div>
+            </div>
+
+            {/* Contributions List */}
+            <div style={{ overflowY: 'auto', flex: 1, borderTop: '1px solid var(--border-default)' }}>
+              <table className="table" style={{ width: '100%', fontSize: 'var(--font-size-xs)' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-default)' }}>
+                    <th style={{ padding: '8px 12px' }}>Member</th>
+                    <th style={{ padding: '8px 12px' }}>Membership ID</th>
+                    <th style={{ padding: '8px 12px' }}>Amount</th>
+                    <th style={{ padding: '8px 12px' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeBreakdown.contributions.map((c) => (
+                    <tr key={c.contribution_id} style={{ borderBottom: '1px solid var(--border-default)' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{c.member_name}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{c.membership_no || 'N/A'}</td>
+                      <td style={{ padding: '8px 12px' }}>₹{c.amount}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            color: c.status === 'SUCCESS' ? '#059669' : '#d97706',
+                          }}
+                        >
+                          {c.status === 'SUCCESS' ? '● PAID' : '● PENDING'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

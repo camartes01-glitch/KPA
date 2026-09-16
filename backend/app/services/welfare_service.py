@@ -14,6 +14,8 @@ from app.models.member import Member, MemberStatus
 from app.models.user import User
 from app.models.welfare import ContributionStatus, WelfareContribution, WelfareEvent, WelfareEventStatus
 from app.schemas.welfare import WelfareEventCreate, WelfareObligationRead
+from app.services.audit_service import AuditService
+from app.services.notification_service import NotificationService
 
 
 class WelfareService:
@@ -89,6 +91,33 @@ class WelfareService:
 
         await db.commit()
         await db.refresh(event)
+
+        # 1. Audit event creation
+        await AuditService.log_action(
+            db=db,
+            action="CREATE_WELFARE_EVENT",
+            resource_type="WELFARE_EVENT",
+            resource_id=str(event.id),
+            user_id=creator.id,
+            payload={
+                "title": event.title,
+                "deceased_member_id": str(data.deceased_member_id),
+                "target_amount": event.target_amount,
+                "eligible_members_count": len(eligible_member_ids),
+            },
+        )
+
+        # 2. Automatically dispatch statewide notification to members
+        try:
+            await NotificationService.trigger_welfare_event_notification(
+                db=db,
+                event=event,
+                deceased_member=deceased,
+            )
+        except Exception as e:
+            # Non-blocking notification dispatch
+            pass
+
         return event
 
     @staticmethod
@@ -177,3 +206,56 @@ class WelfareService:
         await db.commit()
         await db.refresh(contrib)
         return contrib
+
+    @staticmethod
+    async def get_event_contributions_breakdown(
+        db: AsyncSession,
+        event_id: uuid.UUID,
+    ) -> dict:
+        """Calculate complete breakdown of paid, unpaid, and progress for an event."""
+        event = await db.get(WelfareEvent, event_id)
+        if not event:
+            raise HTTPException(status_code=404, detail="Welfare event not found")
+
+        stmt = (
+            select(WelfareContribution)
+            .where(WelfareContribution.event_id == event_id)
+            .options(selectinload(WelfareContribution.member))
+        )
+        contributions = (await db.execute(stmt)).scalars().all()
+
+        total_members = len(contributions)
+        paid_members = [c for c in contributions if c.status == ContributionStatus.SUCCESS]
+        unpaid_members = [c for c in contributions if c.status != ContributionStatus.SUCCESS]
+
+        collected = sum(float(c.amount) for c in paid_members)
+        pending = sum(float(c.amount) for c in unpaid_members)
+        target = float(event.target_amount)
+        percent = round((collected / target * 100), 1) if target > 0 else 0.0
+
+        return {
+            "event_id": str(event_id),
+            "event_title": event.title,
+            "status": event.status.value,
+            "target_amount": target,
+            "collected_amount": collected,
+            "pending_amount": pending,
+            "collection_percentage": percent,
+            "total_obligated_members": total_members,
+            "paid_count": len(paid_members),
+            "unpaid_count": len(unpaid_members),
+            "contributions": [
+                {
+                    "contribution_id": str(c.id),
+                    "member_id": str(c.member_id),
+                    "member_name": c.member.full_name if c.member else "Unknown",
+                    "membership_no": c.member.membership_no if c.member else None,
+                    "amount": float(c.amount),
+                    "status": c.status.value,
+                    "paid_at": c.paid_at.isoformat() if c.paid_at else None,
+                    "payment_method": c.payment_method,
+                }
+                for c in contributions
+            ],
+        }
+

@@ -4,9 +4,9 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
-  LayoutDashboard, Users, Heart, CreditCard, Bell,
+  LayoutDashboard, Users, Heart, CreditCard, FileText, Bell,
   BarChart3, Shield, UserCheck, Settings, LogOut, Menu, X,
-  ChevronRight
+  ChevronRight, Award, MapPin
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
@@ -16,7 +16,10 @@ const navItems = [
   { to: '/members',       icon: Users,            label: 'Members',          roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
   { to: '/welfare-events',icon: Heart,            label: 'Welfare Events' },
   { to: '/payments',      icon: CreditCard,       label: 'Payments',         roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
+  { to: '/receipts',      icon: FileText,         label: 'Receipts',         roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
   { to: '/notifications', icon: Bell,             label: 'Notifications' },
+  { to: '/committees',    icon: Award,            label: 'Committees' },
+  { to: '/districts',     icon: MapPin,           label: 'Districts & Talukas', roles: ['STATE_HEAD', 'DISTRICT_ADMIN'] },
   { to: '/reports',       icon: BarChart3,        label: 'Reports',          roles: ['STATE_HEAD', 'DISTRICT_ADMIN', 'TALUKA_ADMIN', 'AUDITOR'] },
   { to: '/audit-logs',    icon: Shield,           label: 'Audit Logs',       roles: ['STATE_HEAD', 'AUDITOR'] },
   { to: '/roles',         icon: UserCheck,        label: 'Role Management',  roles: ['STATE_HEAD', 'DISTRICT_ADMIN'] },

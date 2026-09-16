@@ -5,10 +5,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#0d3b66"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "org.kpa.welfare"
@@ -19,6 +15,16 @@
       },
       "package": "org.kpa.welfare"
     },
-    "plugins": []
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "KPA Welfare"
+    },
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "5b486732-87b4-4175-8fe1-cda7703b17ca"
+      }
+    }
   }
 }

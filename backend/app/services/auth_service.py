@@ -45,7 +45,7 @@ class AuthService:
 
         otp_record = OTPVerification(
             phone=phone,
-            otp_code=code,
+            otp_code=hash_token(code),
             expires_at=expires_at,
             attempts=0,
             is_used=False,
@@ -60,9 +60,8 @@ class AuthService:
             "message": "OTP sent successfully",
             "expires_in_seconds": settings.OTP_EXPIRY_MINUTES * 60,
         }
-        if settings.OTP_DEV_MODE and not settings.is_production:
+        if (settings.OTP_DEV_MODE or getattr(settings, "DEMO_OTP_ENABLED", False)) and not settings.is_production:
             response_data["dev_code"] = code
-
 
         return response_data
 
@@ -103,7 +102,8 @@ class AuthService:
                 detail="Max OTP attempts exceeded. Please request a new OTP.",
             )
 
-        if otp_record.otp_code != otp:
+        expected_hash = hash_token(otp)
+        if otp_record.otp_code != expected_hash and otp_record.otp_code != otp:
             otp_record.attempts += 1
             await db.commit()
             remaining = settings.OTP_MAX_ATTEMPTS - otp_record.attempts

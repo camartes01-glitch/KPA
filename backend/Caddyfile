@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Caddyfile — Reverse Proxy with Automatic HTTPS for api.kpawelfare.org
+# ─────────────────────────────────────────────────────────────────────────────
+
+api.kpawelfare.org {
+    # Automatic Let's Encrypt TLS renewal & HTTP->HTTPS redirect
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+
+    # Proxy to FastAPI container
+    reverse_proxy api:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Compress responses (gzip / zstd)
+    encode zstd gzip
+}

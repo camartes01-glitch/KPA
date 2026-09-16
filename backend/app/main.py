@@ -13,6 +13,7 @@ from app.core.database import engine, Base
 from app.core.logging import setup_logging
 from app.api.v1.router import api_router
 from app.middleware.security import SecurityHeadersMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ def create_application() -> FastAPI:
 
     # ── Middleware (order matters — outermost added last) ──────────────────
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

@@ -3,6 +3,9 @@ Google Authentication Service — Google ID Token verification, user provisionin
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
+import ssl
+import urllib3
+import requests
 
 from fastapi import HTTPException, status
 from google.auth.transport import requests as google_requests
@@ -17,6 +20,9 @@ from app.schemas.auth import TokenResponse, UserRead
 from app.services.audit_service import AuditService
 from app.services.auth_service import hash_token
 
+# Disable SSL warnings for development (re-enable in production)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 class GoogleAuthService:
     @staticmethod
@@ -26,14 +32,23 @@ class GoogleAuthService:
         Validates signature, issuer, audience, and expiration.
         """
         try:
-            req = google_requests.Request()
+            # Create request with SSL context (development-only: verify=False)
+            if settings.is_development:
+                session = requests.Session()
+                session.verify = False
+                req = google_requests.Request(session=session)
+            else:
+                req = google_requests.Request()
+            
             audience = settings.GOOGLE_CLIENT_ID if settings.GOOGLE_CLIENT_ID else None
             
             # verify_oauth2_token checks signature, exp, and optionally aud
+            # clock_skew_in_seconds allows for legitimate clock differences (standard: 5 minutes)
             payload = google_id_token.verify_oauth2_token(
                 id_token_str,
                 req,
                 audience=audience,
+                clock_skew_in_seconds=300,  # 5 minutes tolerance for clock skew
             )
 
             # Validate issuer

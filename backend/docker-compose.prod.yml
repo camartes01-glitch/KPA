@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # ─── FastAPI Application ───────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kpa_backend_api
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+    networks:
+      - kpa_internal
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── Private Production PostgreSQL Database ────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: kpa_backend_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kpa_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-kpa_prod_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - kpa_internal
+    # Note: Port 5432 is NOT exposed to the host/internet for security
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-kpa_user} -d $${POSTGRES_DB:-kpa_prod_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Private Redis Cache & Celery Broker ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: kpa_backend_redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel notice
+    volumes:
+      - redisdata:/data
+    networks:
+      - kpa_internal
+    # Note: Port 6379 is NOT exposed to the host/internet for security
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Caddy Reverse Proxy & TLS Certificate Manager ─────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: kpa_backend_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - kpa_internal
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  kpa_internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

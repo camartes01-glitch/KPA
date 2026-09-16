@@ -20,6 +20,12 @@ router = APIRouter()
 
 
 @router.get(
+    "",
+    response_model=PaginatedResponse[NotificationRead],
+    summary="Get user's notification feed",
+    include_in_schema=False,
+)
+@router.get(
     "/my",
     response_model=PaginatedResponse[NotificationRead],
     summary="Get user's notification feed (Supports English & Kannada)",

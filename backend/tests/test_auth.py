@@ -162,3 +162,48 @@ async def test_logout(client):
         json={"refresh_token": tokens["refresh_token"]},
     )
     assert refresh_res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_demo_otp_local_flow(client):
+    """POST /api/v1/auth/otp/send and verify with demo OTP 123456 in local development."""
+    send_res = await client.post("/api/v1/auth/otp/send", json={"phone": "9900000004"})
+    assert send_res.status_code == 200
+    assert send_res.json()["data"]["dev_code"] == "123456"
+
+    verify_res = await client.post(
+        "/api/v1/auth/otp/verify",
+        json={"phone": "9900000004", "otp": "123456"},
+    )
+    assert verify_res.status_code == 200
+    data = verify_res.json()["data"]
+    assert "access_token" in data
+    assert data["user"]["phone"] == "+919900000004"
+
+
+def test_production_rejects_demo_otp():
+    """Settings must fail startup if demo OTP is enabled in production."""
+    import os
+    from pydantic import ValidationError
+    from app.core.config import Settings
+
+    old_env = os.environ.get("APP_ENV")
+    old_secret = os.environ.get("SECRET_KEY")
+    old_google = os.environ.get("GOOGLE_CLIENT_ID")
+    old_demo = os.environ.get("DEMO_OTP_ENABLED")
+    try:
+        os.environ["APP_ENV"] = "production"
+        os.environ["SECRET_KEY"] = "secure-production-secret-key-at-least-32-chars-long"
+        os.environ["GOOGLE_CLIENT_ID"] = "production-google-client-id"
+        os.environ["DEMO_OTP_ENABLED"] = "true"
+
+        with pytest.raises(ValidationError) as excinfo:
+            Settings()
+        assert "Demo OTP mode" in str(excinfo.value)
+    finally:
+        for k, v in [("APP_ENV", old_env), ("SECRET_KEY", old_secret), ("GOOGLE_CLIENT_ID", old_google), ("DEMO_OTP_ENABLED", old_demo)]:
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
+

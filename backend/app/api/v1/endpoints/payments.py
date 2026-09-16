@@ -1,12 +1,16 @@
 """
 Payment Endpoints — Order Creation, Signature Verification, Receipts, and Webhooks.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import json
+import math
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.models.payment import PaymentStatus
 from app.models.user import User
-from app.schemas.common import APIResponse
+from app.schemas.common import APIResponse, PaginatedResponse
 from app.schemas.payment import (
     CreateOrderRequest,
     OrderResponse,
@@ -70,11 +74,45 @@ async def verify_payment(
         gateway_order_id=payload.gateway_order_id,
         gateway_payment_id=payload.gateway_payment_id,
         signature=payload.signature,
+        actor_user=current_user,
     )
     return APIResponse(
         success=True,
         message="Payment verified and settled successfully",
         data=receipt,
+    )
+
+
+@router.get(
+    "/receipts",
+    response_model=PaginatedResponse[PaymentReceiptRead],
+    summary="List official payment receipts with search and filters",
+)
+async def list_receipts(
+    search: Optional[str] = Query(None, description="Search by receipt number, member name, or membership ID"),
+    status: Optional[PaymentStatus] = Query(None, description="Filter by payment status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve paginated and filtered list of verified receipts."""
+    receipts, total = await PaymentService.get_receipts(
+        db=db,
+        current_user=current_user,
+        search=search,
+        status_filter=status,
+        page=page,
+        page_size=page_size,
+    )
+    total_pages = max(1, math.ceil(total / page_size))
+    return PaginatedResponse(
+        success=True,
+        data=receipts,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
 
 
@@ -104,9 +142,18 @@ async def razorpay_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Asynchronous webhook handler for payment.captured events."""
-    # Reads payload and header: X-Razorpay-Signature
+    """Asynchronous webhook handler with cryptographic signature verification and idempotency."""
     signature = request.headers.get("X-Razorpay-Signature")
     raw_body = await request.body()
-    # In production, verifies webhook signature and settles automatically
-    return {"status": "ok", "event": "webhook_received"}
+    try:
+        event_payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    result = await PaymentService.process_webhook_event(
+        db=db,
+        raw_body=raw_body,
+        signature=signature,
+        event_payload=event_payload,
+    )
+    return {"status": "ok", "result": result}

@@ -34,7 +34,16 @@ export default function RolesPage() {
   const { user } = useAuthStore()
   const [admins, setAdmins] = useState<AdminUser[]>([])
   const [districts, setDistricts] = useState<Record<string, string>>({})
+  const [rawDistricts, setRawDistricts] = useState<DistrictItem[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formPhone, setFormPhone] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formRole, setFormRole] = useState('DISTRICT_ADMIN')
+  const [formDistrictId, setFormDistrictId] = useState('')
 
   const fetchData = async () => {
     setLoading(true)
@@ -42,6 +51,7 @@ export default function RolesPage() {
       // Load districts for jurisdiction mapping
       const geoRes = await api.get('/geo/districts')
       const distList: DistrictItem[] = geoRes.data.data || []
+      setRawDistricts(distList)
       const distMap: Record<string, string> = {}
       distList.forEach((d) => {
         distMap[d.id] = `${d.name_en} (${d.code})`
@@ -56,6 +66,38 @@ export default function RolesPage() {
       toast.error(msg || 'Failed to load administrator directory')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await api.post('/auth/admins', {
+        phone: formPhone,
+        name: formName,
+        email: formEmail || undefined,
+        role: formRole,
+        district_id: formDistrictId || undefined,
+      })
+      toast.success('Administrator assigned successfully')
+      setShowCreateModal(false)
+      setFormName('')
+      setFormPhone('')
+      setFormEmail('')
+      fetchData()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg || 'Failed to assign administrator')
+    }
+  }
+
+  const handleToggleAdminStatus = async (adm: AdminUser) => {
+    try {
+      await api.patch(`/auth/admins/${adm.id}`, { is_active: !adm.is_active })
+      toast.success(`${adm.name || 'Admin'} ${!adm.is_active ? 'activated' : 'deactivated'}`)
+      fetchData()
+    } catch {
+      toast.error('Failed to update admin status')
     }
   }
 
@@ -84,15 +126,27 @@ export default function RolesPage() {
           </p>
         </div>
 
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="btn btn-secondary"
-          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
-        >
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          {(user?.role === 'STATE_HEAD' || user?.role === 'DISTRICT_ADMIN') && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <Shield size={16} />
+              Assign Administrator
+            </button>
+          )}
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Role Scoping Notice */}
@@ -157,6 +211,7 @@ export default function RolesPage() {
                   <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Role</th>
                   <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Geographic Jurisdiction</th>
                   <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Status</th>
+                  <th style={{ padding: 'var(--space-3) var(--space-4)' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -218,6 +273,18 @@ export default function RolesPage() {
                         {adm.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
+
+                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      {user?.role === 'STATE_HEAD' && (
+                        <button
+                          onClick={() => handleToggleAdminStatus(adm)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                        >
+                          {adm.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -225,6 +292,95 @@ export default function RolesPage() {
           </div>
         )}
       </div>
+
+      {/* Assign Administrator Modal */}
+      {showCreateModal && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <h3 style={{ margin: '0 0 var(--space-4)' }}>Assign Administrator Role</h3>
+            <form onSubmit={handleCreateAdmin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div>
+                <label className="label">Full Name</label>
+                <input
+                  required
+                  className="input"
+                  placeholder="e.g. Suresh Kumar"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="label">Mobile Number</label>
+                <input
+                  required
+                  className="input"
+                  placeholder="+91 98765 43210"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="label">Email Address (Optional)</label>
+                <input
+                  type="email"
+                  className="input"
+                  placeholder="admin@kpa.org.in"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="label">Assign Role</label>
+                <select
+                  className="input"
+                  value={formRole}
+                  onChange={(e) => setFormRole(e.target.value)}
+                >
+                  {user?.role === 'STATE_HEAD' && (
+                    <>
+                      <option value="STATE_HEAD">State Head (Statewide)</option>
+                      <option value="DISTRICT_ADMIN">District Admin</option>
+                      <option value="AUDITOR">Auditor</option>
+                    </>
+                  )}
+                  <option value="TALUKA_ADMIN">Taluka Admin</option>
+                </select>
+              </div>
+
+              {(formRole === 'DISTRICT_ADMIN' || formRole === 'TALUKA_ADMIN') && (
+                <div>
+                  <label className="label">Jurisdiction District</label>
+                  <select
+                    required
+                    className="input"
+                    value={formDistrictId}
+                    onChange={(e) => setFormDistrictId(e.target.value)}
+                  >
+                    <option value="">Select District</option>
+                    {rawDistricts.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name_en} ({d.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Confirm Assignment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

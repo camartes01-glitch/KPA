@@ -10,7 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db, require_roles
 from app.models.user import User, UserRole
 from app.schemas.common import APIResponse
-from app.schemas.geo import DistrictCreate, DistrictRead, DistrictWithTalukasRead, TalukaCreate, TalukaRead
+from app.schemas.geo import (
+    DistrictCreate,
+    DistrictRead,
+    DistrictUpdate,
+    DistrictWithTalukasRead,
+    TalukaCreate,
+    TalukaRead,
+    TalukaUpdate,
+)
 from app.services.geo_service import GeoService
 
 router = APIRouter()
@@ -127,3 +135,54 @@ async def create_taluka(
         message="Taluka created successfully",
         data=TalukaRead.model_validate(taluka),
     )
+
+
+@router.patch(
+    "/districts/{district_id}",
+    response_model=APIResponse[DistrictRead],
+    summary="Update district name or active status (STATE_HEAD only)",
+)
+async def update_district(
+    district_id: uuid.UUID,
+    payload: DistrictUpdate,
+    current_user: User = Depends(require_roles(UserRole.STATE_HEAD)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update district attributes."""
+    district = await GeoService.update_district(db, district_id, payload.model_dump(exclude_unset=True))
+    if not district:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="District not found",
+        )
+    return APIResponse(
+        success=True,
+        message="District updated successfully",
+        data=DistrictRead.model_validate(district),
+    )
+
+
+@router.patch(
+    "/talukas/{taluka_id}",
+    response_model=APIResponse[TalukaRead],
+    summary="Update taluka name or active status (STATE_HEAD only)",
+)
+async def update_taluka(
+    taluka_id: uuid.UUID,
+    payload: TalukaUpdate,
+    current_user: User = Depends(require_roles(UserRole.STATE_HEAD)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update taluka attributes."""
+    taluka = await GeoService.update_taluka(db, taluka_id, payload.model_dump(exclude_unset=True))
+    if not taluka:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Taluka not found",
+        )
+    return APIResponse(
+        success=True,
+        message="Taluka updated successfully",
+        data=TalukaRead.model_validate(taluka),
+    )
+

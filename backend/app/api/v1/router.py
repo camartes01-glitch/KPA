@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     audit_logs,
     auth,
     autopay,
+    committees,
     dashboard,
     geo,
     health,
@@ -14,6 +15,7 @@ from app.api.v1.endpoints import (
     notifications,
     payments,
     reports,
+    settings,
     welfare,
 )
 
@@ -31,3 +33,5 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["Audit Logs"])
+api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+api_router.include_router(committees.router, prefix="/committees", tags=["Committees"])

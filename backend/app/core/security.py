@@ -71,6 +71,6 @@ def decode_token(token: str) -> dict:
 
 def generate_otp() -> str:
     """Generate a 6-digit numeric OTP."""
-    if settings.OTP_DEV_MODE and not settings.is_production:
-        return settings.OTP_DEV_FIXED_CODE
+    if (settings.OTP_DEV_MODE or getattr(settings, "DEMO_OTP_ENABLED", False)) and not settings.is_production:
+        return getattr(settings, "DEMO_OTP", None) or settings.OTP_DEV_FIXED_CODE
     return str(secrets.randbelow(900000) + 100000)

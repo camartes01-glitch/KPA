@@ -1,33 +1,113 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native'
 import { colors } from '../theme/colors'
 import { useAuthStore } from '../store/authStore'
+import { api } from '../services/api'
+
+import { Ionicons } from '@expo/vector-icons'
 
 export default function HomeScreen({ navigation }: any) {
-  const user = useAuthStore((state) => state.user)
+  const { user, updateUser } = useAuthStore()
+  const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [pendingDues, setPendingDues] = useState(0)
+  const [activeEventsCount, setActiveEventsCount] = useState(0)
+
+  const loadData = async () => {
+    try {
+      // 1. Fetch user obligations
+      const obligationsRes = await api.get('/welfare-events/my-contributions')
+      if (obligationsRes.data?.data) {
+        const list: any[] = obligationsRes.data.data
+        const pending = list.filter((c) => c.status === 'PENDING')
+        setPendingCount(pending.length)
+        const sum = pending.reduce((acc, c) => acc + (parseFloat(c.amount) || 10), 0)
+        setPendingDues(sum)
+      }
+
+      // 2. Fetch active events count
+      const eventsRes = await api.get('/welfare-events?status_filter=ACTIVE')
+      if (eventsRes.data?.data) {
+        setActiveEventsCount(eventsRes.data.data.length)
+      }
+
+      // 3. Fetch member details if membership_no missing
+      if (!user?.membership_no) {
+        try {
+          const memberRes = await api.get('/members/me')
+          if (memberRes.data?.data) {
+            const m = memberRes.data.data
+            updateUser({
+              membership_no: m.membership_no,
+              studio_name: m.studio_name,
+              district: m.district_id ? String(m.district_id) : user?.district,
+              status: m.status,
+            })
+          }
+        } catch {
+          // Member record might be created later
+        }
+      }
+    } catch {
+      // Handled gracefully for offline tolerance
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    loadData()
+  }, [])
+
+  const onRefresh = () => {
+    setRefreshing(true)
+    loadData()
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Member Header */}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[700]} />}
+    >
+      {/* Member Header Card */}
       <View style={styles.headerCard}>
         <View style={styles.badgeRow}>
-          <Text style={styles.goldBadge}>ACTIVE MEMBER</Text>
-          <Text style={styles.idText}>{user?.membership_no || 'KPA-0000'}</Text>
+          <Text style={styles.goldBadge}>
+            {user?.is_active ? 'ACTIVE MEMBER' : 'REGISTERED MEMBER'}
+          </Text>
+          <View style={styles.headerIconsRow}>
+            <Text style={styles.idText}>{user?.membership_no || 'KPA-MEMBER'}</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Settings')}
+              style={styles.gearButton}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.gold[400]} />
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.memberName}>{user?.name || 'Photographer'}</Text>
         <Text style={styles.memberDistrict}>
-          {user?.district || 'Karnataka State'} • Member
+          {user?.phone ? user.phone : ''} • {user?.role || 'MEMBER'}
         </Text>
 
         <TouchableOpacity
           style={styles.cardButton}
           onPress={() => navigation.navigate('DigitalCard')}
+          activeOpacity={0.8}
         >
           <Text style={styles.cardButtonText}>View Digital ID Card & QR</Text>
         </TouchableOpacity>
@@ -35,36 +115,58 @@ export default function HomeScreen({ navigation }: any) {
 
       {/* Welfare Status Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Welfare Fund Status</Text>
+        <Text style={styles.sectionTitle}>Mutual Welfare Status</Text>
         <View style={styles.statusBox}>
           <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Pending Dues</Text>
-            <Text style={styles.statusValZero}>₹0.00</Text>
+            <View>
+              <Text style={styles.statusLabel}>Pending Dues</Text>
+              <Text style={styles.statusSub}>{pendingCount} case(s) pending settlement</Text>
+            </View>
+            <Text style={pendingDues > 0 ? styles.statusValDue : styles.statusValZero}>
+              ₹{pendingDues.toFixed(2)}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>AutoPay Status</Text>
-            <Text style={styles.statusActive}>Configured</Text>
+            <View>
+              <Text style={styles.statusLabel}>Active Emergency Relief Cases</Text>
+              <Text style={styles.statusSub}>Statewide mutual benefit claims</Text>
+            </View>
+            <Text style={styles.statusActive}>{activeEventsCount}</Text>
           </View>
         </View>
+
+        {pendingDues > 0 && (
+          <TouchableOpacity
+            style={styles.payPromptBtn}
+            onPress={() => navigation.navigate('Welfare')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.payPromptText}>
+              Pay ₹{pendingDues.toFixed(2)} Pending Mutual Relief →
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Quick Action Buttons */}
+      {/* Quick Action Grid */}
       <View style={styles.actionGrid}>
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('Welfare')}
+          activeOpacity={0.8}
         >
-          <Text style={styles.actionTitle}>Welfare Events</Text>
-          <Text style={styles.actionDesc}>Active relief cases & history</Text>
+          <Text style={styles.actionTitle}>Welfare Cases</Text>
+          <Text style={styles.actionDesc}>View active claims & contribute</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('Profile')}
+          activeOpacity={0.8}
         >
-          <Text style={styles.actionTitle}>My Nominee</Text>
-          <Text style={styles.actionDesc}>Verify beneficiary details</Text>
+          <Text style={styles.actionTitle}>My Profile</Text>
+          <Text style={styles.actionDesc}>Verify nominee & KYC status</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -101,6 +203,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1,
   },
+  headerIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gearButton: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
   idText: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
@@ -118,15 +230,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   cardButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 12,
+    backgroundColor: colors.gold[400],
     paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
   },
   cardButtonText: {
-    color: colors.neutral.white,
+    color: colors.primary[900],
     fontWeight: '700',
     fontSize: 14,
   },
@@ -142,7 +252,7 @@ const styles = StyleSheet.create({
   statusBox: {
     backgroundColor: colors.neutral.white,
     borderRadius: 16,
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.neutral.border,
   },
@@ -150,31 +260,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
   },
   statusLabel: {
     fontSize: 14,
+    fontWeight: '600',
+    color: colors.neutral.text,
+  },
+  statusSub: {
+    fontSize: 12,
     color: colors.neutral.textSecondary,
-    fontWeight: '500',
+    marginTop: 2,
   },
   statusValZero: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.status.success,
   },
+  statusValDue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#dc2626',
+  },
   statusActive: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.primary[500],
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary[700],
   },
   divider: {
     height: 1,
     backgroundColor: colors.neutral.border,
-    marginVertical: 12,
+    marginVertical: 14,
+  },
+  payPromptBtn: {
+    backgroundColor: '#dc2626',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  payPromptText: {
+    color: colors.neutral.white,
+    fontWeight: '700',
+    fontSize: 14,
   },
   actionGrid: {
     flexDirection: 'row',
-    gap: 14,
+    gap: 12,
   },
   actionCard: {
     flex: 1,
@@ -185,7 +316,7 @@ const styles = StyleSheet.create({
     borderColor: colors.neutral.border,
   },
   actionTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.neutral.text,
     marginBottom: 4,
@@ -193,5 +324,6 @@ const styles = StyleSheet.create({
   actionDesc: {
     fontSize: 12,
     color: colors.neutral.textSecondary,
+    lineHeight: 16,
   },
 })

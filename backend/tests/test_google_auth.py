@@ -133,3 +133,80 @@ async def test_google_auth_rejects_suspended_user(client, db_session):
         )
         assert response.status_code == 403
         assert "suspended" in response.json()["detail"].lower()
+
+
+def test_clock_skew_tolerates_near_future_iat():
+    """Verify that a token issued 1-2 seconds ahead (legitimate clock skew) is accepted."""
+    import time
+    from google.auth import jwt
+
+    now = int(time.time())
+    # iat is 2 seconds in future (like 1789532475 < 1789532476)
+    payload = {
+        "iat": now + 2,
+        "exp": now + 3600,
+        "sub": "user-clock-skew",
+        "email": "skew.user@gmail.com",
+    }
+    # With 300s skew tolerance, this must not raise any exception
+    jwt._verify_iat_and_exp(payload, clock_skew_in_seconds=300)
+
+
+def test_clock_skew_rejects_truly_expired_token():
+    """Verify that a token expired well beyond the clock skew tolerance (e.g. 10m ago) is rejected."""
+    import time
+    from google.auth import jwt, exceptions
+
+    now = int(time.time())
+    payload = {
+        "iat": now - 7200,
+        "exp": now - 600,  # expired 10 minutes ago (> 300s tolerance)
+        "sub": "expired-user",
+        "email": "expired@gmail.com",
+    }
+    with pytest.raises(exceptions.InvalidValue, match="Token expired"):
+        jwt._verify_iat_and_exp(payload, clock_skew_in_seconds=300)
+
+
+def test_clock_skew_rejects_far_future_token():
+    """Verify that a token with iat far in the future (> 300s tolerance) is rejected."""
+    import time
+    from google.auth import jwt, exceptions
+
+    now = int(time.time())
+    payload = {
+        "iat": now + 600,  # 10 minutes in future (> 300s tolerance)
+        "exp": now + 4200,
+        "sub": "future-user",
+        "email": "future@gmail.com",
+    }
+    with pytest.raises(exceptions.InvalidValue, match="Token used too early"):
+        jwt._verify_iat_and_exp(payload, clock_skew_in_seconds=300)
+
+
+def test_verify_google_id_token_passes_clock_skew():
+    """Verify that GoogleAuthService.verify_google_id_token passes clock_skew_in_seconds=300."""
+    from app.services.google_auth_service import GoogleAuthService
+
+    mock_verified_payload = {
+        "iss": "https://accounts.google.com",
+        "sub": "clock-skew-sub-123",
+        "email": "test.skew@gmail.com",
+        "email_verified": True,
+        "name": "Skew Test",
+        "picture": None,
+    }
+
+    with patch(
+        "google.oauth2.id_token.verify_oauth2_token",
+        return_value=mock_verified_payload,
+    ) as mock_verify:
+        res = GoogleAuthService.verify_google_id_token("mock-token")
+        assert res["email"] == "test.skew@gmail.com"
+        assert res["sub"] == "clock-skew-sub-123"
+
+        # Check call arguments
+        mock_verify.assert_called_once()
+        _, kwargs = mock_verify.call_args
+        assert kwargs.get("clock_skew_in_seconds") == 300
+

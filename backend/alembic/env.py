@@ -24,8 +24,9 @@ import app.models  # Load all models for Alembic migrations
 # ── Alembic Config object ─────────────────────────────────────────────────────
 config = context.config
 
-# Override sqlalchemy.url with our settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_SYNC_URL)
+# Use configured sqlalchemy.url if set, otherwise default to settings
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_SYNC_URL)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
@@ -63,11 +64,19 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations using async engine."""
+    url = config.get_main_option("sqlalchemy.url") or settings.DATABASE_SYNC_URL
+    if url.startswith("sqlite:///"):
+        async_url = url.replace("sqlite:///", "sqlite+aiosqlite:///")
+    elif url.startswith("postgresql://"):
+        async_url = url.replace("postgresql://", "postgresql+asyncpg://")
+    else:
+        async_url = settings.DATABASE_URL
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        url=settings.DATABASE_URL,
+        url=async_url,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

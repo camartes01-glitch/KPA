@@ -45,3 +45,18 @@ class DistrictWithTalukasRead(DistrictRead):
     talukas: List[TalukaRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DistrictUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_kn: Optional[str] = None
+    code: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class TalukaUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_kn: Optional[str] = None
+    code: Optional[str] = None
+    is_active: Optional[bool] = None
+

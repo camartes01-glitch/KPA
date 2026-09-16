@@ -24,7 +24,7 @@ class AuditService:
         user_agent: Optional[str] = None,
     ) -> AuditLog:
         """Record an immutable audit log entry."""
-        payload_str = json.dumps(payload) if payload else None
+        payload_str = json.dumps(payload, default=str) if payload else None
         log_entry = AuditLog(
             user_id=user_id,
             action=action,

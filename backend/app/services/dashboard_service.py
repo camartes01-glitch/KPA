@@ -88,13 +88,34 @@ class DashboardService:
                         )
                     )
                 ).scalar() or 0
+
+                d_collected = float(
+                    (
+                        await db.execute(
+                            select(func.coalesce(func.sum(Payment.amount), 0.0))
+                            .join(Member, Payment.member_id == Member.id)
+                            .where(Member.district_id == d.id, Payment.status == PaymentStatus.CAPTURED)
+                        )
+                    ).scalar() or 0.0
+                )
+
+                d_pending = float(
+                    (
+                        await db.execute(
+                            select(func.coalesce(func.sum(WelfareContribution.amount), 0.0))
+                            .join(Member, WelfareContribution.member_id == Member.id)
+                            .where(Member.district_id == d.id, WelfareContribution.status == ContributionStatus.PENDING)
+                        )
+                    ).scalar() or 0.0
+                )
+
                 district_breakdown.append(
                     DistrictMetricItem(
                         district_name=d.name_en,
                         total_members=d_total,
                         approved_members=d_appr,
-                        total_collected=0.0,
-                        pending_dues=0.0,
+                        total_collected=d_collected,
+                        pending_dues=d_pending,
                     )
                 )
 

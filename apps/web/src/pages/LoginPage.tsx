@@ -41,9 +41,10 @@ export default function LoginPage() {
       toast.success(`Welcome, ${user.name || user.email}!`)
       navigate('/dashboard')
     } catch (err: unknown) {
+      const errorResponse = (err as { response?: { data?: { detail?: string; message?: string } } })?.response
       const msg =
-        (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data?.detail ||
-        (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data?.message ||
+        errorResponse?.data?.detail ||
+        errorResponse?.data?.message ||
         'Google authentication failed. Please try again.'
       setErrorMessage(msg)
       toast.error(msg)

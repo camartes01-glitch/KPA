@@ -48,6 +48,10 @@ def setup_logging() -> None:
     root_logger.handlers = [handler]
     root_logger.setLevel(log_level)
 
+    # Ensure uvicorn logs are also visible
+    logging.getLogger("uvicorn").setLevel(log_level)
+    logging.getLogger("uvicorn.access").setLevel(log_level)
+
     # Suppress noisy loggers in production
     if settings.is_production:
         logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

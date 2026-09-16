@@ -29,13 +29,13 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
     API_V1_PREFIX: str = "/api/v1"
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
-    ALLOWED_HOSTS: List[str] = ["*"]
+    ALLOWED_HOSTS: List[str] = ["api.kpawelfare.org", "localhost", "127.0.0.1"]
 
-    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @field_validator("ALLOWED_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
-    def split_origins(cls, v):
+    def split_comma_separated(cls, v):
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
     # ── Security ─────────────────────────────────────────────────────────────
@@ -58,9 +58,11 @@ class Settings(BaseSettings):
     # ── OTP ──────────────────────────────────────────────────────────────────
     OTP_EXPIRY_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
-    OTP_RATE_LIMIT_PER_HOUR: int = 10
+    OTP_RATE_LIMIT_PER_HOUR: int = 50
     OTP_DEV_MODE: bool = True
     OTP_DEV_FIXED_CODE: str = "123456"
+    DEMO_OTP_ENABLED: bool = True
+    DEMO_OTP: str = "123456"
 
     # ── Google OAuth ─────────────────────────────────────────────────────────
     GOOGLE_CLIENT_ID: str = ""
@@ -150,7 +152,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_safety(self) -> "Settings":
         if self.APP_ENV == "production":
-            if self.SECRET_KEY == "changeme-development-only-replace-in-production" or len(self.SECRET_KEY) < 32:
+            if (
+                self.SECRET_KEY == "changeme-development-only-replace-in-production"
+                or "kpa-dev" in self.SECRET_KEY
+                or len(self.SECRET_KEY) < 32
+            ):
                 raise ValueError(
                     "Production safety violation: SECRET_KEY must be set to a secure string with at least 32 characters in production."
                 )
@@ -158,8 +164,14 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production safety violation: GOOGLE_CLIENT_ID must be configured in production."
                 )
-            if self.OTP_DEV_MODE:
-                object.__setattr__(self, "OTP_DEV_MODE", False)
+            if "*" in self.ALLOWED_ORIGINS:
+                raise ValueError(
+                    "Production safety violation: Wildcard ALLOWED_ORIGINS ('*') is forbidden in production."
+                )
+            if self.OTP_DEV_MODE or self.DEMO_OTP_ENABLED:
+                raise ValueError(
+                    "Production safety violation: Demo OTP mode (OTP_DEV_MODE / DEMO_OTP_ENABLED) cannot be enabled in production."
+                )
         return self
 
 

@@ -466,3 +466,30 @@ class GeoService:
         await db.commit()
         await db.refresh(taluka)
         return taluka
+
+    @staticmethod
+    async def update_district(db: AsyncSession, district_id: uuid.UUID, data: dict) -> Optional[District]:
+        stmt = select(District).where(District.id == district_id)
+        district = (await db.execute(stmt)).scalar_one_or_none()
+        if not district:
+            return None
+        for k, v in data.items():
+            if v is not None:
+                setattr(district, k, v)
+        await db.commit()
+        await db.refresh(district)
+        return district
+
+    @staticmethod
+    async def update_taluka(db: AsyncSession, taluka_id: uuid.UUID, data: dict) -> Optional[Taluka]:
+        stmt = select(Taluka).where(Taluka.id == taluka_id)
+        taluka = (await db.execute(stmt)).scalar_one_or_none()
+        if not taluka:
+            return None
+        for k, v in data.items():
+            if v is not None:
+                setattr(taluka, k, v)
+        await db.commit()
+        await db.refresh(taluka)
+        return taluka
+

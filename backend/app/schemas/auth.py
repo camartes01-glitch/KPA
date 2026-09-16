@@ -87,3 +87,22 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserRead
+
+
+class AdminCreateRequest(BaseModel):
+    phone: str
+    name: str
+    email: Optional[str] = None
+    role: UserRole
+    district_id: Optional[uuid.UUID] = None
+    taluka_id: Optional[uuid.UUID] = None
+
+
+class AdminUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+    status: Optional[UserStatus] = None
+    district_id: Optional[uuid.UUID] = None
+    taluka_id: Optional[uuid.UUID] = None

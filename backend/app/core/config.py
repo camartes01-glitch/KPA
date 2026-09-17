@@ -28,8 +28,13 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     API_V1_PREFIX: str = "/api/v1"
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
-    ALLOWED_HOSTS: List[str] = ["api.kpawelfare.org", "localhost", "127.0.0.1"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8082",
+        "https://kpa-web-e36f-git-main-camartes.vercel.app",
+    ]
+    ALLOWED_HOSTS: List[str] = ["api.kpawelfare.org", "localhost", "127.0.0.1", "*.vercel.app", "*"]
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_HOSTS", mode="before")
     @classmethod
@@ -171,6 +176,10 @@ class Settings(BaseSettings):
             if self.OTP_DEV_MODE or self.DEMO_OTP_ENABLED:
                 raise ValueError(
                     "Production safety violation: Demo OTP mode (OTP_DEV_MODE / DEMO_OTP_ENABLED) cannot be enabled in production."
+                )
+            if not self.DATABASE_URL or "sqlite" in self.DATABASE_URL.lower():
+                raise ValueError(
+                    "Production safety violation: DATABASE_URL must be set to a valid PostgreSQL database connection string in production."
                 )
         return self
 

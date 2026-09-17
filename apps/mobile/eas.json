@@ -16,7 +16,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://objective-university-highways-sorted.trycloudflare.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.kpawelfare.org/api/v1"
       }
     },
     "production": {

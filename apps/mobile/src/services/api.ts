@@ -7,13 +7,20 @@ import { useAuthStore } from '../store/authStore'
 
 const rawEnvUrl = process.env.EXPO_PUBLIC_API_URL
 
-export const BASE_URL = (
-  rawEnvUrl && rawEnvUrl.trim().length > 0
-    ? rawEnvUrl.trim().replace(/\/+$/, '')
-    : typeof __DEV__ !== 'undefined' && __DEV__
-    ? 'http://localhost:8000/api/v1'
-    : 'https://api.kpawelfare.org/api/v1'
-)
+const isDev = (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.NODE_ENV === 'development'
+
+function getBaseUrl(): string {
+  if (rawEnvUrl && rawEnvUrl.trim().length > 0) {
+    return rawEnvUrl.trim().replace(/\/+$/, '')
+  }
+  if (isDev) {
+    return 'http://localhost:8000/api/v1'
+  }
+  console.error('[API Configuration Error]: EXPO_PUBLIC_API_URL is missing in production build!')
+  return ''
+}
+
+export const BASE_URL = getBaseUrl()
 
 export const api = axios.create({
   baseURL: BASE_URL,

@@ -5,9 +5,20 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore } from '@/store/authStore'
 
-export const BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : 'https://api.kpawelfare.org/api/v1')
+const envApiUrl = import.meta.env.VITE_API_URL
+
+function getAdminBaseUrl(): string {
+  if (envApiUrl && envApiUrl.trim().length > 0) {
+    return envApiUrl.trim().replace(/\/+$/, '')
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8000/api/v1'
+  }
+  console.error('[API Configuration Error]: VITE_API_URL is missing in production build!')
+  return ''
+}
+
+export const BASE_URL = getAdminBaseUrl()
 
 export const api = axios.create({
   baseURL: BASE_URL,

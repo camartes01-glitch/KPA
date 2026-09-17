@@ -17,6 +17,10 @@ from app.core.config import settings
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
 if _is_sqlite:
+    if settings.is_production:
+        raise RuntimeError(
+            "Production database error: SQLite is forbidden in production. Please configure DATABASE_URL with PostgreSQL."
+        )
     # SQLite: NullPool creates a new connection per session — avoids StaticPool
     # deadlocks when multiple concurrent requests hit the dev server simultaneously.
     engine = create_async_engine(
